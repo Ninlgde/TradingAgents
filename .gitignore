@@ -225,6 +225,7 @@ reports/
 # Local analysis run artifacts (caches, logs, results)
 .ta_run/
 
-# Agent tooling metadata
-.reasonix/
+# Agent tooling metadata (skills/ ships with the repo so agents can use it after clone)
+.reasonix/*
+!.reasonix/skills/
 reasonix.toml
