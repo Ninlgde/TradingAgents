@@ -11,6 +11,13 @@ import json
 import os
 import sys
 
+# Always run against the repo source, not a possibly-stale pip-installed copy:
+# `python scripts/run_stock.py` puts scripts/ first on sys.path, which would
+# import tradingagents from site-packages. This script is the repo's truth.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 

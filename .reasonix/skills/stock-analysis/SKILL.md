@@ -54,6 +54,8 @@ python scripts/run_stock.py AAPL 2026-08-03 market
 tradingagents analyze
 ```
 
+> **源码 vs 安装版**：`python scripts/run_stock.py` / `python scripts/quick_ta.py` 已内置仓库根到 `sys.path`，始终使用仓库源码（含 AkShare 改造）。`tradingagents` 命令来自 pip 安装副本——若 clone 后改了仓库代码（或要启用 akshare），交互式 CLI 请改用 `python -m cli.main`（从仓库根运行，命中源码），或先 `pip install .` 重装。
+
 ## 关键约定
 
 - **A 股 ticker 必须带交易所后缀**：沪 `600036.SS`、深 `000001.SZ`、北 `8xxxxx.BJ`；裸 6 位数字也能识别，但带后缀最稳。美股用 `AAPL` 等。

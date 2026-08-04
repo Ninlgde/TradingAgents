@@ -8,7 +8,13 @@ Usage:
 The date defaults to 2026-08-03 (most recent completed trading day when
 written). Pass a different date as argv[1] if needed.
 """
+import os
 import sys
+
+# Always run against the repo source (see run_stock.py for rationale).
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 from tradingagents.dataflows.y_finance import get_stock_stats_indicators_window
 
