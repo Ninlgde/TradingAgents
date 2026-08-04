@@ -40,6 +40,7 @@ from tradingagents.agents.utils.structured import (
     bind_structured,
     invoke_structured_or_freetext,
 )
+from tradingagents.dataflows.akshare_news import get_sentiment_akshare, is_a_share
 from tradingagents.dataflows.reddit import fetch_reddit_posts
 from tradingagents.dataflows.stocktwits import fetch_stocktwits_messages
 
@@ -64,21 +65,32 @@ def create_sentiment_analyst(llm):
         start_date = _seven_days_back(end_date)
         instrument_context = get_instrument_context_from_state(state)
 
-        # Pre-fetch all three sources. Each fetcher degrades gracefully and
+        # Pre-fetch all data sources. Each fetcher degrades gracefully and
         # returns a string (no exceptions surface from here), so the LLM
         # always sees something — either real data or a clear placeholder.
+        # A-share tickers use EastMoney sources (Yahoo/StockTwits/Reddit do
+        # not cover Chinese stocks); everything else keeps the US path.
         news_block = get_news.func(ticker, start_date, end_date)
-        stocktwits_block = fetch_stocktwits_messages(ticker, limit=30)
-        reddit_block = fetch_reddit_posts(ticker)
-
-        system_message = _build_system_message(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            news_block=news_block,
-            stocktwits_block=stocktwits_block,
-            reddit_block=reddit_block,
-        )
+        if is_a_share(ticker):
+            sentiment_block = get_sentiment_akshare(ticker, end_date)
+            system_message = _build_a_share_system_message(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                news_block=news_block,
+                sentiment_block=sentiment_block,
+            )
+        else:
+            stocktwits_block = fetch_stocktwits_messages(ticker, limit=30)
+            reddit_block = fetch_reddit_posts(ticker)
+            system_message = _build_system_message(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                news_block=news_block,
+                stocktwits_block=stocktwits_block,
+                reddit_block=reddit_block,
+            )
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -173,6 +185,72 @@ Community discussion. Engagement signal via upvote score and comment count. Subr
 6. **Be honest about data limits.** If StockTwits returned only a handful of messages, or one or more sources returned an "<unavailable>" placeholder, the sentiment read is less robust — flag this explicitly in the `confidence` field and the narrative. If the sources are silent on a given subreddit, say so.
 
 7. **Identify catalysts and risks** that emerge across sources — news of upcoming earnings, product launches, competitive threats, macro headlines, etc.
+
+8. **Past sentiment is not predictive.** Frame your conclusions as signal for the trader to weigh alongside fundamentals and technicals, not as a price call.
+
+## Output fields
+
+Fill the following fields:
+
+- **overall_band**: Exactly one of Bullish / Mildly Bullish / Neutral / Mixed / Mildly Bearish / Bearish. Use Mixed when sources point in clearly different directions; Neutral only when all sources are genuinely silent.
+- **overall_score**: A number from 0 (maximally bearish) to 10 (maximally bullish); 5 is neutral. Keep it consistent with overall_band.
+- **confidence**: low / medium / high, based on data quality and sample size.
+- **narrative**: Full source-by-source breakdown, divergences, dominant narrative themes, catalysts and risks, and a markdown summary table of key sentiment signals (direction, source, supporting evidence).
+
+{get_language_instruction()}"""
+
+
+# ---------------------------------------------------------------------------
+# A-share sentiment prompt (EastMoney sources)
+# ---------------------------------------------------------------------------
+def _build_a_share_system_message(
+    *,
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    news_block: str,
+    sentiment_block: str,
+) -> str:
+    """Assemble the A-share sentiment-analyst system message.
+
+    Yahoo/StockTwits/Reddit do not cover mainland-China tickers, so the
+    pre-fetched blocks come from EastMoney (东方财富): the per-stock news
+    feed and the 千股千评 composite-rating table. Output fields stay
+    identical to the US path so downstream parsing is unchanged.
+    """
+    return f"""You are a financial market sentiment analyst for Chinese A-shares. Your task is to produce a comprehensive sentiment report for {ticker} covering the period from {start_date} to {end_date}, drawing on two complementary data sources that have already been collected for you.
+
+## Data sources (pre-fetched, in this prompt)
+
+### News headlines — EastMoney (东方财富), past 7 days
+Institutional and press framing of this A-share company. Fact-driven, slower-moving signal.
+
+<start_of_news>
+{news_block}
+<end_of_news>
+
+### EastMoney 千股千评 — per-stock composite rating table
+Market-attention signal maintained by EastMoney across all A-shares. Fields: 综合得分 (composite score, 100 = strongest), 机构参与度 (institutional participation, 0-1), 关注指数 (attention index), 目前排名/上升 (rank across all A-shares and its change), 主力成本 (main-force average cost basis), 最新价/涨跌幅/换手率/市盈率.
+
+<start_of_sentiment>
+{sentiment_block}
+<end_of_sentiment>
+
+## How to analyze this data (best practices)
+
+1. **Read 综合得分 as the primary composite signal**, but cross-check it against 机构参与度 and 关注指数: a high score with rising attention and strong institutional participation suggests institutional accumulation; a high score with falling rank/weak participation is less reliable.
+
+2. **Use 主力成本 as a reference level**: price materially above main-force cost with rising participation can indicate distribution risk; price near/below it with accumulation signals may offer support. Treat as context, not a hard rule.
+
+3. **Look for cross-source divergences.** If news framing is negative but the composite score is high (or vice versa), that mismatch is itself a signal — flag it explicitly.
+
+4. **Distinguish opinion from event.** A news headline (e.g. "行长任职资格获核准") is an event; a rating change is a derived opinion. Weight events higher.
+
+5. **Identify recurring narrative themes.** What topic keeps coming up in the news? That is the dominant narrative driving current sentiment for this A-share.
+
+6. **Be honest about data limits.** If news returned few/no articles or sentiment is "<unavailable>", the sentiment read is less robust — flag this explicitly in the `confidence` field and the narrative. Do not fabricate news or ratings that were not provided.
+
+7. **Identify catalysts and risks** that emerge across sources — earnings announcements, policy/regulatory news, leadership changes, dividend actions, etc.
 
 8. **Past sentiment is not predictive.** Frame your conclusions as signal for the trader to weigh alongside fundamentals and technicals, not as a price call.
 

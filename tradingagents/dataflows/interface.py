@@ -1,5 +1,7 @@
 import logging
 
+from yfinance.exceptions import YFRateLimitError
+
 from .alpha_vantage import (
     get_balance_sheet as get_alpha_vantage_balance_sheet,
     get_cashflow as get_alpha_vantage_cashflow,
@@ -27,6 +29,11 @@ from .y_finance import (
     get_insider_transactions as get_yfinance_insider_transactions,
     get_stock_stats_indicators_window,
     get_YFin_data_online,
+)
+from .akshare_news import (
+    get_global_news_akshare,
+    get_insider_transactions_akshare,
+    get_news_akshare,
 )
 from .yfinance_news import get_global_news_yfinance, get_news_yfinance
 
@@ -82,6 +89,7 @@ VENDOR_LIST = [
     "fred",
     "polymarket",
     "alpha_vantage",
+    "akshare",
 ]
 
 # Optional enrichment categories. These add macro/event context to the news
@@ -124,14 +132,17 @@ VENDOR_METHODS = {
     "get_news": {
         "alpha_vantage": get_alpha_vantage_news,
         "yfinance": get_news_yfinance,
+        "akshare": get_news_akshare,
     },
     "get_global_news": {
         "yfinance": get_global_news_yfinance,
         "alpha_vantage": get_alpha_vantage_global_news,
+        "akshare": get_global_news_akshare,
     },
     "get_insider_transactions": {
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
+        "akshare": get_insider_transactions_akshare,
     },
     # macro_data
     "get_macro_indicators": {
@@ -200,7 +211,7 @@ def route_to_vendor(method: str, *args, **kwargs):
 
         try:
             return impl_func(*args, **kwargs)
-        except VendorRateLimitError:
+        except (VendorRateLimitError, YFRateLimitError):
             logger.warning("Vendor %r rate-limited for %s; trying next vendor.", vendor, method)
             continue
         except VendorNotConfiguredError as e:

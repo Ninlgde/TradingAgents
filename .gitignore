@@ -221,3 +221,10 @@ __marimo__/
 # Enterprise env file (secrets) and generated run reports
 .env.enterprise
 reports/
+
+# Local analysis run artifacts (caches, logs, results)
+.ta_run/
+
+# Agent tooling metadata
+.reasonix/
+reasonix.toml

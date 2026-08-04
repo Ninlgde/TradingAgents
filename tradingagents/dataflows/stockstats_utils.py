@@ -1,5 +1,7 @@
 import logging
 import os
+import random
+import threading
 import time
 from typing import Annotated
 
@@ -9,6 +11,7 @@ from stockstats import wrap
 from yfinance.exceptions import YFRateLimitError
 
 from .config import get_config
+from .errors import VendorRateLimitError
 from .symbol_utils import NoMarketDataError, normalize_symbol
 from .utils import safe_ticker_component
 
@@ -25,24 +28,72 @@ MAX_OHLCV_STALE_DAYS = 10
 # at all (weekend, holiday) cannot trigger a download on every call.
 OHLCV_CACHE_TTL_SECONDS = 900
 
+# ---------------------------------------------------------------------------
+#  Global rate limiter — prevents parallel agents from overwhelming the
+#  yfinance / Yahoo Finance API with simultaneous requests. All yfinance
+#  calls funnel through the _rate_limit_gate() helper below.
+# ---------------------------------------------------------------------------
 
-def yf_retry(func, max_retries=3, base_delay=2.0):
-    """Execute a yfinance call with exponential backoff on rate limits.
+# Minimum seconds between yfinance HTTP calls to avoid triggering rate limits.
+_MIN_CALL_GAP_SECONDS = 1.5
+
+_rate_limit_lock = threading.Lock()
+_rate_limit_last_call: float = 0.0
+
+
+def _rate_limit_gate() -> None:
+    """Block until the minimum inter-call gap has elapsed since the last call.
+
+    Thread-safe: only one caller proceeds at a time, and the remainder wait
+    out the cooldown so staggered retries don't pile on top of each other.
+    """
+    global _rate_limit_last_call
+    with _rate_limit_lock:
+        now = time.monotonic()
+        wait = _rate_limit_last_call + _MIN_CALL_GAP_SECONDS - now
+        if wait > 0:
+            logger.debug("Rate-limit gate: waiting %.1fs before next yfinance call", wait)
+            time.sleep(wait)
+        _rate_limit_last_call = time.monotonic()
+
+
+def yf_retry(func, max_retries=5, base_delay=2.0):
+    """Execute a yfinance call with jittered exponential backoff on rate limits.
 
     yfinance raises YFRateLimitError on HTTP 429 responses but does not
     retry them internally. This wrapper adds retry logic specifically
-    for rate limits. Other exceptions propagate immediately.
+    for rate limits. Random jitter (±25%) is applied so parallel agents
+    don't retry at exactly the same time and re-trigger the rate limit.
+
+    After exhausting retries, raises VendorRateLimitError so the routing
+    layer can fall back to the next configured vendor.
     """
     for attempt in range(max_retries + 1):
+        # Honor the global rate-limit gate before every attempt.
+        _rate_limit_gate()
         try:
             return func()
         except YFRateLimitError:
             if attempt < max_retries:
                 delay = base_delay * (2 ** attempt)
-                logger.warning(f"Yahoo Finance rate limited, retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})")
+                # Add ±25% jitter to avoid thundering-herd retries.
+                jitter = delay * 0.25
+                delay += random.uniform(-jitter, jitter)
+                delay = max(delay, 0.5)  # floor at 0.5 s
+                logger.warning(
+                    "Yahoo Finance rate limited, retrying in %.1fs "
+                    "(attempt %d/%d)", delay, attempt + 1, max_retries,
+                )
                 time.sleep(delay)
             else:
-                raise
+                logger.error(
+                    "Yahoo Finance rate limited after %d retries; "
+                    "raising VendorRateLimitError for vendor fallback.",
+                    max_retries,
+                )
+                raise VendorRateLimitError(
+                    f"Yahoo Finance rate-limited after {max_retries} retries"
+                ) from None
 
 
 def _ensure_date_column(data: pd.DataFrame) -> pd.DataFrame:
