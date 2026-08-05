@@ -9,6 +9,10 @@ _TRADINGAGENTS_HOME = os.path.join(os.path.expanduser("~"), ".tradingagents")
 # their .env file.
 _ENV_OVERRIDES = {
     "TRADINGAGENTS_LLM_PROVIDER":         "llm_provider",
+    "TRADINGAGENTS_DEEP_THINK_PROVIDER":  "deep_think_provider",
+    "TRADINGAGENTS_QUICK_THINK_PROVIDER": "quick_think_provider",
+    "TRADINGAGENTS_DEEP_THINK_BACKEND_URL":  "deep_think_backend_url",
+    "TRADINGAGENTS_QUICK_THINK_BACKEND_URL": "quick_think_backend_url",
     "TRADINGAGENTS_DEEP_THINK_LLM":       "deep_think_llm",
     "TRADINGAGENTS_QUICK_THINK_LLM":      "quick_think_llm",
     "TRADINGAGENTS_LLM_BACKEND_URL":      "backend_url",

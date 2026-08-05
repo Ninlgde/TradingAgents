@@ -89,6 +89,18 @@ _DEFAULT = ModelCapabilities(
     preferred_structured_method="function_calling",
 )
 
+# Kimi K3 / kimi-for-coding models on the api.kimi.com/coding endpoint are
+# thinking-only; the endpoint 400s on a specified tool_choice
+# ("tool_choice 'specified' is incompatible with thinking enabled"). Same
+# shape as the DeepSeek thinking quirk: bind the schema as a tool, suppress
+# tool_choice.
+_KIMI_THINKING = ModelCapabilities(
+    supports_tool_choice=False,
+    supports_json_mode=True,
+    supports_json_schema=False,
+    preferred_structured_method="function_calling",
+)
+
 
 # Exact-ID matches take precedence over pattern matches.
 _BY_ID: dict[str, ModelCapabilities] = {
@@ -105,6 +117,11 @@ _BY_ID: dict[str, ModelCapabilities] = {
     "MiniMax-M2.1": _MINIMAX_THINKING,
     "MiniMax-M2.1-highspeed": _MINIMAX_THINKING,
     "MiniMax-M2": _MINIMAX_THINKING,
+    # Kimi Coding endpoint (api.kimi.com/coding) — thinking-only models
+    "k3": _KIMI_THINKING,
+    "k3-256k": _KIMI_THINKING,
+    "kimi-for-coding": _KIMI_THINKING,
+    "kimi-for-coding-highspeed": _KIMI_THINKING,
 }
 
 # Forward-compat patterns. New ``deepseek-v5-*`` / ``deepseek-reasoner-*``
@@ -113,6 +130,8 @@ _BY_PATTERN: list[tuple[re.Pattern[str], ModelCapabilities]] = [
     (re.compile(r"^deepseek-v\d"), _DEEPSEEK_THINKING),
     (re.compile(r"^deepseek-reasoner"), _DEEPSEEK_THINKING),
     (re.compile(r"^MiniMax-M\d"), _MINIMAX_THINKING),
+    (re.compile(r"^k3"), _KIMI_THINKING),
+    (re.compile(r"^kimi-for-coding"), _KIMI_THINKING),
 ]
 
 

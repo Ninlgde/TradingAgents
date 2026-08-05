@@ -99,15 +99,15 @@ class TradingAgentsGraph:
             llm_kwargs["callbacks"] = self.callbacks
 
         deep_client = create_llm_client(
-            provider=self.config["llm_provider"],
+            provider=self.config.get("deep_think_provider") or self.config["llm_provider"],
             model=self.config["deep_think_llm"],
-            base_url=self.config.get("backend_url"),
+            base_url=self.config.get("deep_think_backend_url") or self.config.get("backend_url"),
             **llm_kwargs,
         )
         quick_client = create_llm_client(
-            provider=self.config["llm_provider"],
+            provider=self.config.get("quick_think_provider") or self.config["llm_provider"],
             model=self.config["quick_think_llm"],
-            base_url=self.config.get("backend_url"),
+            base_url=self.config.get("quick_think_backend_url") or self.config.get("backend_url"),
             **llm_kwargs,
         )
 
